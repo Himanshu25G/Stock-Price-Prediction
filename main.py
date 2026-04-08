@@ -15,17 +15,44 @@ app = FastAPI(
 )
 
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # for dev (restrict in production)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 # Load model
 import os
 print("Files in current dir:", os.listdir())
-model = load_model("Stock_model.h5")
+try:
+    model = load_model("Stock_model.h5")
+except Exception as e:
+    print("Model loading failed:", e)
+    model = None
+
+
+
 
 @app.get("/")
 def home():
     return {"message": "Stock Prediction API Running 🚀"}
 
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+
 @app.get("/predict/{stock}")
 def predict_stock(stock: str = "POWERGRID.NS"):
+
+    if model is None:
+        return {"error": "Model not loaded. Please ensure Stock_model.h5 is in the directory."}
+    
     try:
         start = dt.datetime(2005, 1, 1)
         end = dt.datetime.now()
@@ -45,7 +72,7 @@ def predict_stock(stock: str = "POWERGRID.NS"):
         data_training = pd.DataFrame(df['Close'][0:int(len(df)*0.80)])
         data_testing = pd.DataFrame(df['Close'][int(len(df)*0.80):])
 
-        scaler = MinMaxScaler()
+        scaler = MinMaxScaler(feature_range=(0, 1))
         data_training_array = scaler.fit_transform(data_training)
 
         past_100_days = data_training.tail(100)
@@ -59,6 +86,9 @@ def predict_stock(stock: str = "POWERGRID.NS"):
             y_test.append(input_data[i, 0])
 
         x_test = np.array(x_test)
+        x_test = x_test.reshape((x_test.shape[0], x_test.shape[1], 1))  # Ensure 3D shape for LSTM input
+
+
 
         # Prediction
         y_predicted = model.predict(x_test)
